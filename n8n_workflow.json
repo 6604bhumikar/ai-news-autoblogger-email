@@ -1,0 +1,187 @@
+{
+  "name": "AI News Auto-Blogger Email Automation",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "daysInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "cron-trigger",
+      "name": "Daily Cron Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://serpapi.com/search.json",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "engine",
+              "value": "google_news"
+            },
+            {
+              "name": "q",
+              "value": "latest artificial intelligence news"
+            },
+            {
+              "name": "api_key",
+              "value": "={{$env.SERPAPI_API_KEY}}"
+            }
+          ]
+        }
+      },
+      "id": "news-api",
+      "name": "Fetch AI News",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        260,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = $json.news_results || [];\nreturn results.slice(0, 5).map(item => ({ json: { title: item.title, link: item.link, source: item.source?.name || item.source || '', snippet: item.snippet || '', date: item.date || '' } }));"
+      },
+      "id": "filter-ai-news",
+      "name": "Filter AI News",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{$env.GROQ_API_KEY}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"model\":\"llama3-70b-8192\",\"messages\":[{\"role\":\"system\",\"content\":\"You write clear AI news blog posts and email newsletters. Use only supplied news context.\"},{\"role\":\"user\",\"content\":\"Create a blog post and email newsletter from this AI news item: {{$json.title}} {{$json.snippet}} {{$json.link}}\"}],\"temperature\":0.4}"
+      },
+      "id": "groq-blog-generator",
+      "name": "Groq Blog Generator",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        780,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const content = $json.choices?.[0]?.message?.content || 'No generated content returned.';\nreturn [{ json: { subject: 'Latest AI News Roundup', body: content } }];"
+      },
+      "id": "email-formatter",
+      "name": "Email Formatter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{$env.SMTP_USER}}",
+        "toEmail": "={{$env.DEFAULT_RECIPIENT}}",
+        "subject": "={{$json.subject}}",
+        "text": "={{$json.body}}"
+      },
+      "id": "send-email",
+      "name": "Send Gmail Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        1300,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Daily Cron Trigger": {
+      "main": [
+        [
+          {
+            "node": "Fetch AI News",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch AI News": {
+      "main": [
+        [
+          {
+            "node": "Filter AI News",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter AI News": {
+      "main": [
+        [
+          {
+            "node": "Groq Blog Generator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Blog Generator": {
+      "main": [
+        [
+          {
+            "node": "Email Formatter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email Formatter": {
+      "main": [
+        [
+          {
+            "node": "Send Gmail Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
