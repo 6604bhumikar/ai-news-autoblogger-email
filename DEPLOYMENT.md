@@ -15,7 +15,6 @@ app.py
 ## Required Secrets
 
 ```toml
-SERPAPI_API_KEY = "your_key_here"
 GROQ_API_KEY = "your_key_here"
 SMTP_HOST = "smtp.gmail.com"
 SMTP_PORT = 587

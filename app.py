@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import smtplib
+import xml.etree.ElementTree as ET
 from email.message import EmailMessage
 from typing import Any
+from urllib.parse import quote_plus
 
 import requests
 import streamlit as st
@@ -10,7 +12,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_groq import ChatGroq
 
 APP_TITLE = "AI News Auto-Blogger & Email Automation"
-SERPAPI_URL = "https://serpapi.com/search.json"
+GOOGLE_NEWS_RSS_URL = "https://news.google.com/rss/search"
 
 st.set_page_config(page_title=APP_TITLE, page_icon=":newspaper:", layout="wide")
 
@@ -102,33 +104,23 @@ def build_llm() -> ChatGroq | None:
 
 
 def fetch_ai_news(query: str, limit: int) -> list[dict[str, str]]:
-    api_key = str(get_secret("SERPAPI_API_KEY", "")).strip()
-    if not api_key:
-        raise RuntimeError("Missing SERPAPI_API_KEY in Streamlit secrets.")
-
-    params = {
-        "engine": "google_news",
-        "q": query,
-        "api_key": api_key,
-        "hl": "en",
-        "gl": "us",
-    }
-    response = requests.get(SERPAPI_URL, params=params, timeout=30)
+    rss_url = f"{GOOGLE_NEWS_RSS_URL}?q={quote_plus(query)}&hl=en-US&gl=US&ceid=US:en"
+    response = requests.get(
+        rss_url,
+        headers={"User-Agent": "Mozilla/5.0 Streamlit AI News Blogger"},
+        timeout=30,
+    )
     response.raise_for_status()
-    payload = response.json()
-    raw_items = payload.get("news_results", [])[:limit]
+    root = ET.fromstring(response.content)
 
     articles: list[dict[str, str]] = []
-    for item in raw_items:
-        title = str(item.get("title", "")).strip()
-        link = str(item.get("link", "")).strip()
-        source = item.get("source", {})
-        if isinstance(source, dict):
-            source_name = str(source.get("name", "")).strip()
-        else:
-            source_name = str(source).strip()
-        snippet = str(item.get("snippet") or item.get("summary") or "").strip()
-        date = str(item.get("date", "")).strip()
+    for item in root.findall("./channel/item")[:limit]:
+        title = (item.findtext("title") or "").strip()
+        link = (item.findtext("link") or "").strip()
+        snippet = (item.findtext("description") or "").strip()
+        date = (item.findtext("pubDate") or "").strip()
+        source_node = item.find("source")
+        source_name = source_node.text.strip() if source_node is not None and source_node.text else "Google News"
         if title and link:
             articles.append({"title": title, "link": link, "source": source_name, "snippet": snippet, "date": date})
     return articles
@@ -222,13 +214,13 @@ st.markdown(
 
 with st.sidebar:
     st.header("Automation Console")
-    for secret_name in ["SERPAPI_API_KEY", "GROQ_API_KEY", "SMTP_USER", "SMTP_PASSWORD"]:
+    for secret_name in ["GROQ_API_KEY", "SMTP_USER", "SMTP_PASSWORD"]:
         if has_secret(secret_name):
             st.success(f"{secret_name} loaded")
         else:
             st.warning(f"{secret_name} missing")
     st.divider()
-    st.markdown("**Workflow:** News API -> Groq writer -> email formatter -> SMTP delivery")
+    st.markdown("**Workflow:** Google News RSS -> Groq writer -> email formatter -> SMTP delivery")
     st.markdown("**Safety:** Preview and edit content before sending.")
     st.caption("Use Gmail app passwords or another SMTP provider. Never place real secrets in source code.")
 
@@ -241,7 +233,7 @@ with options_col:
 
 metric_cols = st.columns(4)
 metrics = [
-    ("News Source", "SerpAPI"),
+    ("News Source", "Google News RSS"),
     ("Writer Model", "Groq Llama 3"),
     ("Delivery", "SMTP Email"),
     ("Articles", str(limit)),
@@ -271,7 +263,7 @@ fetch_col, generate_col = st.columns([1, 1])
 with fetch_col:
     if st.button("Fetch Latest AI News", type="primary"):
         try:
-            with st.spinner("Fetching AI news from SerpAPI..."):
+            with st.spinner("Fetching AI news from Google News RSS..."):
                 st.session_state.articles = fetch_ai_news(query, limit)
             if not st.session_state.articles:
                 st.warning("No news articles were returned for this query.")

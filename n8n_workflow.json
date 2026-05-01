@@ -23,21 +23,21 @@
     },
     {
       "parameters": {
-        "url": "https://serpapi.com/search.json",
+        "url": "https://news.google.com/rss/search",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
-            {
-              "name": "engine",
-              "value": "google_news"
-            },
             {
               "name": "q",
               "value": "latest artificial intelligence news"
             },
             {
-              "name": "api_key",
-              "value": "={{$env.SERPAPI_API_KEY}}"
+              "name": "hl",
+              "value": "en-US"
+            },
+            {
+              "name": "ceid",
+              "value": "US:en"
             }
           ]
         }
@@ -53,7 +53,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const results = $json.news_results || [];\nreturn results.slice(0, 5).map(item => ({ json: { title: item.title, link: item.link, source: item.source?.name || item.source || '', snippet: item.snippet || '', date: item.date || '' } }));"
+        "jsCode": "const xml = $json.data || $json.body || '';\nconst items = [...xml.matchAll(/<item>[\\s\\S]*?<title><!\\[CDATA\\[(.*?)\\]\\]><\\/title>[\\s\\S]*?<link>(.*?)<\\/link>[\\s\\S]*?<pubDate>(.*?)<\\/pubDate>[\\s\\S]*?<source[^>]*>(.*?)<\\/source>[\\s\\S]*?<\\/item>/g)];\nreturn items.slice(0, 5).map(match => ({ json: { title: match[1], link: match[2], source: match[4], snippet: '', date: match[3] } }));"
       },
       "id": "filter-ai-news",
       "name": "Filter AI News",
